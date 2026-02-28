@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-fortvoice
+    ports:
+      - "8000:8000"
+    environment:
+      # Database Configuration
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-}
+      - DB_NAME=${DB_NAME:-fortvoice_db}
+      - DB_CHARSET=${DB_CHARSET:-utf8mb4}
+      
+      # OpenAI Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      # Mount for persistent audio file storage
+      - ./src/transcription_audio_files:/app/src/transcription_audio_files
+      # Mount for models if you want to update them without rebuilding
+      - ./src/models:/app/src/models
+    restart: unless-stopped
+    networks:
+      - fortvoice-network
+
+  # Optional: MySQL database service (uncomment if you want Docker to manage the database)
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: fortvoice-mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpassword}
+  #     MYSQL_DATABASE: ${DB_NAME:-fortvoice_db}
+  #     MYSQL_USER: ${DB_USER:-root}
+  #     MYSQL_PASSWORD: ${DB_PASSWORD:-rootpassword}
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #   networks:
+  #     - fortvoice-network
+  #   restart: unless-stopped
+
+networks:
+  fortvoice-network:
+    driver: bridge
+
+# Uncomment if using MySQL service above
+# volumes:
+#   mysql_data:
+

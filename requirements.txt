@@ -1,0 +1,35 @@
+aiofiles==24.1.0
+fastapi==0.115.9
+google-ai-generativelanguage==0.6.18
+google-api-python-client==2.172.0
+google-auth==2.40.3
+google-genai==1.31.0
+langchain==0.3.25
+langchain-community==0.3.25
+langchain-core==0.3.68
+langchain-google-genai==2.1.7
+langchain-openai==0.3.28
+langchain-pinecone==0.2.8
+openai==1.88.0
+pydantic==2.11.7
+python-dotenv==1.1.1
+uvicorn==0.34.3
+python-multipart
+faster-whisper
+langchain-core
+jinja2
+asyncio
+httpx
+slowapi
+supabase  # Optional: Keep if needed for data migration
+sqlalchemy==2.0.36  # ORM for MySQL database operations
+pymysql==1.1.1  # MySQL driver for Python
+cryptography==44.0.0  # Required for PyMySQL SSL connections (AWS RDS)
+boto3==1.35.0  # AWS S3 SDK for audio file storage
+joblib
+scikit-learn==1.6.1
+xgboost
+pydub
+audioop-lts # only needed for higher python version # if it throws error, remove it since it is already present in lower versions of python.
+PyJWT>=2.10.1
+redis==5.0.1

@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# Testing
+testing/
+*.csv
+*.log
+
+# Documentation
+*.md
+!README.md
+
+# Archives
+*.zip
+*.tar.gz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Audio files (transcription_audio_files)
+src/transcription_audio_files/
+*.webm
+*.m4a
+*.mp3
+*.wav
+
+# Large model files (if not needed in container, uncomment)
+# src/models/*.pkl
+
+# Deployment scripts
+.deploy.sh
+

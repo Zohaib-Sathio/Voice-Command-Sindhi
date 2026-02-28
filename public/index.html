@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Audio Transcriber Test</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #6dd5ed, #2193b0);
+        height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .container {
+        background: #fff;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0px 8px 25px rgba(0, 0, 0, 0.2);
+        width: 90%;
+        max-width: 700px;
+        text-align: center;
+        animation: fadeIn 0.5s ease-in-out;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      h2 {
+        margin-bottom: 20px;
+        color: #333;
+      }
+
+      button {
+        padding: 14px 25px;
+        margin: 10px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        border: none;
+        border-radius: 8px;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+      }
+
+      #recordBtn {
+        background: #28a745;
+        color: white;
+      }
+      #stopBtn {
+        background: #dc3545;
+        color: white;
+        display: none;
+      }
+      #testBtn {
+        background: #007bff;
+        color: white;
+        display: none;
+      }
+
+      audio {
+        margin-top: 20px;
+        display: none;
+        width: 100%;
+      }
+
+      .output {
+        margin-top: 25px;
+        text-align: left;
+      }
+
+      pre {
+        background: #1e1e1e;
+        color: #f8f8f2;
+        padding: 15px;
+        border-radius: 10px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 14px;
+      }
+
+      .timing {
+        margin-top: 10px;
+        font-size: 14px;
+        color: #444;
+        background: #f1f1f1;
+        padding: 10px;
+        border-radius: 8px;
+      }
+
+      .status {
+        margin-top: 10px;
+        font-weight: bold;
+        font-size: 15px;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>🎤 Audio Transcriber Test</h2>
+      <div>
+        <button id="recordBtn">Start Recording</button>
+        <button id="stopBtn">Stop Recording</button>
+        <button id="testBtn">Send to API</button>
+      </div>
+
+      <audio id="audioPlayer" controls></audio>
+
+      <div class="status" id="statusText">No recording yet.</div>
+
+      <div class="output">
+        <h3>API Response:</h3>
+        <pre id="response">No request sent yet...</pre>
+        <div id="timing" class="timing"></div>
+      </div>
+    </div>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+      let audioBlob = null;
+      let jwtToken = null; // Store JWT token
+      const userId = "web_user_" + Date.now(); // Generate a unique user ID for this session
+
+      const recordBtn = document.getElementById("recordBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const testBtn = document.getElementById("testBtn");
+      const responseBox = document.getElementById("response");
+      const audioPlayer = document.getElementById("audioPlayer");
+      const timingBox = document.getElementById("timing");
+      const statusText = document.getElementById("statusText");
+
+      const beneficiaries = [
+        { id: crypto.randomUUID(), name: "Mubashir Ali", account: "PK00-0001-1111-2222", bankName: "Alfalah" },
+        { id: crypto.randomUUID(), name: "Ali Raza", account: "PK00-0002-1111-2222", bankName: "United Bank" },
+        {
+          id: crypto.randomUUID(),
+          name: "Hamza Ahmed",
+          account: "PK00-0003-1111-2222",
+          bankName: "Standard Chartered",
+        },
+        { id: crypto.randomUUID(), name: "Bilal Hussain", account: "PK00-0004-1111-2222", bankName: "MCB Bank" },
+        { id: crypto.randomUUID(), name: "Usman Tariq", account: "PK00-0005-1111-2222", bankName: "JS Bank" },
+        {
+          id: crypto.randomUUID(),
+          name: "Muhammad Omer Khan",
+          account: "PK00-0006-1111-2222",
+          bankName: "Alfalah",
+        },
+        { id: crypto.randomUUID(), name: "Ahmed Faraz", account: "PK00-0007-1111-2222", bankName: "Habib Bank" },
+        { id: crypto.randomUUID(), name: "Saad Shaikh", account: "PK00-0008-1111-2222", bankName: "Meezan Bank" },
+        {
+          id: crypto.randomUUID(),
+          name: "Kashif Mehmood",
+          account: "PK00-0009-1111-2222",
+          bankName: "Faysal Bank",
+        },
+        { id: crypto.randomUUID(), name: "Danish Ali", account: "PK00-0010-1111-2222", bankName: "Askari Bank" },
+      ];
+
+      // Example datasets required by the API
+      const phoneNumbers = [
+      {id: '126826815', name: 'Muhammad Haris Arshad', number: '03217250749'}, 
+      {id: '126826875', name: 'Muhammad Haris Arshad', number: '03466107814'}, 
+      {id: '20368345', name: 'masufone', number: '03332311645'}, 
+      {id: '118373087', name: 'Aslam', number: '03117772726'}, 
+      {id: '37418947', name: 'ZONGDevice', number: '03122683447'}, 
+      {id: '81932655', name: 'Sudais ZONG', number: '03181204021'},
+      {id: '81937435', name: 'Telenor', number: '03183409821'},
+      {id: '87641155', name: 'mobilink', number: '03983204021'},
+        { id: crypto.randomUUID(), name: "Mubashir Ali", number: "03001234567" },
+        { id: crypto.randomUUID(), name: "Ali Raza", number: "03017654321" },
+        { id: crypto.randomUUID(), name: "Hamza Ahmed", number: "03111234567" },
+      ];
+
+      const billTypes = [
+        { id: crypto.randomUUID(), type: "IESCO", name: "Home Ebill" },
+        { id: crypto.randomUUID(), type: "K-Electric", name: "Tulip" },
+        { id: crypto.randomUUID(), type: "KWSB", name: "Kwsb Tulip" },
+        { id: crypto.randomUUID(), type: "PTCL", name: "Tulip Ptcl" },
+        { id: crypto.randomUUID(), type: "PTCL", name: "PTCL Bill Payment" },
+        { id: crypto.randomUUID(), type: "SNGPL", name: "Home SNGPL" },
+        { id: crypto.randomUUID(), type: "SSGC", name: "Tulip Sui Gas" },
+      ];
+
+      // Function to generate or get JWT token
+      async function getOrGenerateToken() {
+        // If token already exists, return it
+        if (jwtToken) {
+          return jwtToken;
+        }
+
+        try {
+          statusText.textContent = "🔐 Generating authentication token...";
+          const tokenUrl = window.location.origin + "/v1/api/auth/generate-token";
+          
+          const response = await fetch(tokenUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              user_id: userId
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Token generation failed: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          jwtToken = data.token;
+          statusText.textContent = "✅ Token generated successfully";
+          return jwtToken;
+        } catch (err) {
+          statusText.textContent = "❌ Token generation failed: " + err.message;
+          throw err;
+        }
+      }
+
+      recordBtn.onclick = async () => {
+        // try {
+        //   // Generate or get token before starting recording
+        //   await getOrGenerateToken();
+        // } catch (err) {
+        //   console.error("Failed to get token:", err);
+        //   statusText.textContent = "❌ Cannot start recording: Authentication failed";
+        //   return;
+        // }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        audioChunks = [];
+        audioBlob = null;
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+          const audioURL = URL.createObjectURL(audioBlob);
+          audioPlayer.src = audioURL;
+          audioPlayer.style.display = "block";
+          testBtn.style.display = "inline-block";
+          statusText.textContent = "Recording finished ✅ Play audio below or send to API.";
+        };
+
+        mediaRecorder.start();
+        recordBtn.style.display = "none";
+        stopBtn.style.display = "inline-block";
+        testBtn.style.display = "none";
+        audioPlayer.style.display = "none";
+        timingBox.textContent = "";
+        responseBox.textContent = "No request sent yet...";
+        statusText.textContent = "Recording... 🎙️";
+      };
+
+      stopBtn.onclick = () => {
+        mediaRecorder.stop();
+        stopBtn.style.display = "none";
+        recordBtn.style.display = "inline-block";
+      };
+
+      testBtn.onclick = async () => {
+        if (!audioBlob) {
+          statusText.textContent = "⚠️ No recording available.";
+          return;
+        }
+
+        // Ensure we have a token before making the API call
+        // if (!jwtToken) {
+        //   try {
+        //     await getOrGenerateToken();
+        //   } catch (err) {
+        //     statusText.textContent = "❌ Cannot send request: Authentication failed";
+        //     responseBox.textContent = "Error: " + err.message;
+        //     return;
+        //   }
+        // }
+
+        const formData = new FormData();
+        formData.append("audio_file", audioBlob, "recording.webm"); // Whisper accepts webm
+        // Backend expects these exact field names
+        formData.append("beneficiary_list", JSON.stringify(beneficiaries));
+        formData.append("phone_number_list", JSON.stringify(phoneNumbers));
+        formData.append("bills_type_list", JSON.stringify(billTypes));
+        formData.append("appId", "test-app-id");
+        formData.append("key", "test-key");
+        formData.append("packageName", "com.bitscollision.bito1auth");
+
+        try {
+          const apiUrl = window.location.origin + "/v1/api/transcribe/command";
+          const startTime = new Date();
+
+          responseBox.textContent = "Sending request...";
+          timingBox.textContent = `Request started: ${startTime.toLocaleTimeString()}`;
+          statusText.textContent = "⏳ Sending audio to API...";
+
+          const res = await fetch(apiUrl, {
+            method: "POST",
+            // headers: {
+            //   "Authorization": `Bearer ${jwtToken}`
+            // },
+            body: formData
+          });
+
+          let json;
+          if (res.ok) {
+            json = await res.json();
+          } else {
+            // Handle error responses
+            const errorText = await res.text();
+            try {
+              json = JSON.parse(errorText);
+            } catch {
+              json = { error: errorText, status: res.status, statusText: res.statusText };
+            }
+          }
+
+          const endTime = new Date();
+          const duration = endTime - startTime;
+
+          responseBox.textContent = JSON.stringify(json, null, 2);
+
+          timingBox.innerHTML = `
+            <b>Request started:</b> ${startTime.toLocaleTimeString()}<br>
+            <b>Request ended:</b> ${endTime.toLocaleTimeString()}<br>
+            <b>Duration:</b> ${duration} ms<br>
+            <b>Status:</b> ${res.status} ${res.statusText}
+          `;
+
+          if (res.ok) {
+            statusText.textContent = "✅ API response received.";
+          } else if (res.status === 401) {
+            statusText.textContent = "❌ Authentication failed. Token may have expired.";
+            jwtToken = null; // Clear token so it will be regenerated next time
+          } else if (res.status === 429) {
+            statusText.textContent = "⚠️ Rate limit exceeded. Please try again later.";
+          } else {
+            statusText.textContent = `❌ Request failed with status ${res.status}.`;
+          }
+        } catch (err) {
+          responseBox.textContent = "Error: " + err.message;
+          timingBox.textContent = "";
+          statusText.textContent = "❌ Request failed.";
+        }
+      };
+    </script>
+  </body>
+</html>

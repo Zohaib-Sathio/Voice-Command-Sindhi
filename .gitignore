@@ -1,0 +1,13 @@
+.env
+.venv
+__pycache__
+logs.log
+.deploy.sh
+audio.m4a
+src/__pycache__
+testing
+src/transcription_audio_files
+FortVoice_Whisper_100k.zip
+FortVoice_Whisper_100k
+STRESS_TESTING_GUIDE.md
+transcription_files.zip
