@@ -132,6 +132,29 @@ def check_negative_keywords(transcribed_text):
         "پیکجز",
         "mobile pakage",
         "pakage",
+        
+        # --- Sindhi equivalents ---
+        # Government & Taxes (Sindhi)
+        "حڪومت",       # government
+        "ٽيڪس",        # tax
+        
+        # UBL loans / cards (Sindhi)
+        "قرض",         # loan/debt
+        
+        # Education (Sindhi)
+        "تعليم",       # education
+        
+        # Real estate (Sindhi)
+        "رئل اسٽيٽ",   # real estate
+        
+        # Internet service provider (Sindhi)
+        "انٽرنيٽ سروس",  # internet service
+        
+        # Mobile postpaid / packages (Sindhi)
+        "پوسٽ پيڊ",     # postpaid
+        "پيڪيج",        # package
+        "پيڪيجز",       # packages
+        "موبائل پيڪيج", # mobile package
     ]
     
     # Check if any negative keyword is present in the transcription
@@ -143,19 +166,51 @@ def check_negative_keywords(transcribed_text):
     return False
 
 
+async def get_intent(transcribed_text):
+    prompt = f"""
+    send_money: The user wants to send money to a beneficiary.
+    pay_bill: The user wants to pay a bill.
+    mobile_topup: The user wants to top up their mobile.
+    download_statement: The user wants to download a statement.
+    check_balance: The user wants to check their balance.
+    get_account_number_iban: The user wants to get their account number or IBAN.
+    unknown: The intent is not clear.
+
+    You are a helpful assistant that extracts the intent from the transcribed text.
+    Transcribed text can be in Sindhi, Urdu, English, or a mix of these languages.
+    The transcribed text is: {transcribed_text}
+    Return the intent only in the following format: send_money, pay_bill, mobile_topup, download_statement, check_balance, get_account_number_iban, unknown.
+    If the intent is not clear, return unknown.
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            service_tier="priority",   
+            messages=[{"role": "system", "content": prompt}],
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        log(f"Error getting intent: {e}")
+        return None
+
+
 async def prediction_pipeline(data_dict, background_tasks, context_data=None):
     try:
         timer_1 = time.perf_counter()
-        prediction = data_dict["model"].predict([data_dict["transcribed_text"]])[0]
-        intent = data_dict["label_encoder"].inverse_transform([prediction])[0]
+        # Add a priority openai api call to get the intent from the transcribed text
+        intent = await get_intent(data_dict["transcribed_text"])
         log(f"Detected Intent: {intent}")
         if intent == "send_money":
             text = data_dict["transcribed_text"].lower()
             keywords = [
-                "balance", "recharge", "topup", "top-up", "top of", 
+                # English
+                "balance", "recharge", "topup", "top-up", "top of",
                 "mobile balance", "balance bhejo", "send balance",
-                "لوڈ", "ریچارج", "بیلنس", "بیلنس بھیجو", "موبائل بیلنس", "موبائل بیلنس بھیجو", "ٹاپ اپ", "ٹاپ اپ کرو", 
+                # Urdu
+                "لوڈ", "ریچارج", "بیلنس", "بیلنس بھیجو", "موبائل بیلنس", "موبائل بیلنس بھیجو", "ٹاپ اپ", "ٹاپ اپ کرو",
                 "ٹوپ اپ",
+                # Sindhi
+                "لوڊ", "ريچارج", "بيلنس", "موبائل بيلنس", "ٽاپ اپ", "بھیلنس"
             ]
             if any(keyword in text for keyword in keywords):
                 log(f"Mobile topup detected, changing intent from {intent} to mobile_topup")
@@ -183,102 +238,27 @@ async def prediction_pipeline(data_dict, background_tasks, context_data=None):
                     "card_discount": False
                 }
                 return gpt_result
-        if intent == "download_statement":
-            text = data_dict["transcribed_text"].lower()
-            if any(keyword in text for keyword in ["balance","بیلنس"]):
-                intent = "unknown"
-            mini_keywords = [
-                "mini",
-                "small",
-                "tiny",
-                "little",
-                "compact",
-                "short",
-                "reduced",
-                "low",
-                "minimal",
-
-                "mini size",
-                "short version",
-
-                "منی",
-                "چھوٹا",
-                "چھوٹی",
-                "کم",
-                "کم سائز",
-                "چھوٹا سائز",
-                "مختصر",
-            ]
-            if any(keyword in text for keyword in mini_keywords):
-                intent = "unknown"
+        if intent == "check_balance" or intent == "get_account_number_iban":
+            return {
+                "type": intent,
+                "id": [],
+                "name": [],
+                "bank_name": [],
+                "amount": 0,
+                "bill_type": [],
+                "bill_name": [],
+                "mobile_number": [],
+                "statement_period_month": '',
+                "statement_period_year": '',
+                "detected_language": data_dict.get("detected_language", ""),
+                "payee_name": '',
+                "payee_bank_name": '',
+                "payee_account_number": '',
+                "card_discount": False
+            }
             
         
-        if intent == "unknown" or intent == "download_statement":
-            # Extract components from the other_actions_model dictionary
-            other_actions_model = data_dict["other_actions_model"]
-            clf = other_actions_model.get("clf")
-            vectorizer = other_actions_model.get("vectorizer")
-            label_encoder = other_actions_model.get("label_encoder")
-            
-            if clf and vectorizer and label_encoder:
-                # Transform the transcribed text using the vectorizer
-                text_vectorized = vectorizer.transform([data_dict["transcribed_text"]])
-                
-                # Get prediction from the classifier
-                prediction = clf.predict(text_vectorized)[0]
-                
-                # Get the intent name from the label encoder
-                predicted_intent = label_encoder.inverse_transform([prediction])[0]
-                
-                log(f"Other actions model predicted intent: {predicted_intent}")
-                
-                if predicted_intent == "add_new_payee":
-                    gpt_result = process_add_new_payee_intent(data_dict, background_tasks, context_data)
-                    return gpt_result
-                elif predicted_intent == "deals_and_discounts":
-                    gpt_result = process_deals_and_discounts_intent(data_dict, background_tasks, context_data)
-                    return gpt_result
-                else:
-                    # Create gpt_result with predicted intent as type, other fields empty/zero
-                    if intent != "download_statement":
-                        gpt_result = {
-                        "type": predicted_intent,
-                        "id": [],
-                        "name": [],
-                        "bank_name": [],
-                        "amount": 0,
-                        "bill_type": [],
-                        "bill_name": [],
-                        "mobile_number": [],
-                        "statement_period_month": '',
-                        "statement_period_year": '',
-                        "detected_language": data_dict.get("detected_language", ""),
-                        "payee_name": '',
-                        "payee_bank_name": '',
-                        "payee_account_number": '',
-                        "card_discount": False
-                    }
-                        return gpt_result
-            else:
-                log("[WARNING] Other actions model components not found, returning unknown")
-                gpt_result = {
-                    "type": "unknown",
-                    "id": [],
-                    "name": [],
-                    "bank_name": [],
-                    "amount": 0,
-                    "bill_type": [],
-                    "bill_name": [],
-                    "mobile_number": [],
-                    "statement_period_month": '',
-                    "statement_period_year": '',
-                    "detected_language": data_dict.get("detected_language", ""),
-                    "payee_name": '',
-                    "payee_bank_name": '',
-                    "payee_account_number": '',
-                    "card_discount": False
-                }
-                return gpt_result
+        
         # Use GPT function calls for specific intents (excluding unknown)
         gpt_result = None
         
@@ -370,9 +350,9 @@ def process_send_money_intent(data_dict, background_tasks, context_data=None):
     
     # Create language-specific prompts for better matching
     if data_dict['detected_language'] == 'urdu':
-        # Urdu-specific prompt with transliteration focus
+        # Urdu/Sindhi prompt — handles both Urdu and Sindhi transcribed text
         prompt = f"""
-        You are processing a SEND MONEY command in URDU. Your ONLY job is to identify which beneficiary from the list matches the Urdu name and bank name (if mentioned) in the transcript.
+        You are processing a SEND MONEY command in URDU or SINDHI. Your ONLY job is to identify which beneficiary from the list matches the name and bank name (if mentioned) in the transcript.
         
         Transcript: "{data_dict['transcribed_text']}"
         Language: {data_dict['detected_language']}
@@ -380,16 +360,16 @@ def process_send_money_intent(data_dict, background_tasks, context_data=None):
         
         YOUR TASK: Return ONLY the ID of the matched beneficiary from beneficiaries list.
         
-        URDU NAME AND BANK NAME MATCHING INSTRUCTIONS:
+        URDU / SINDHI NAME AND BANK NAME MATCHING INSTRUCTIONS:
         
-        1. EXTRACT the Urdu name mentioned in the transcript
-           - CRITICAL: If NO name is mentioned in the transcript, return id = ""
+        1. EXTRACT the name mentioned in the transcript
+           - CRITICAL: If NO name is mentioned in the transcript, return id = []
            - Only proceed if a person's name is clearly mentioned
-           - Amount-only transcripts like "سو روپے بھیجو" (send 100 rupees) have NO name
+           - Amount-only transcripts like "سو روپے بھیجو" or "سؤ روپيا موڪل" (send 100 rupees) have NO name
         
         2. EXTRACT the bank name mentioned in the transcript (if any)
-           - Look for bank names in Urdu script or English
-           - Common Urdu bank name references:
+           - Look for bank names in Urdu script, Sindhi script, or English
+           - Urdu bank name references:
              * "ایچ بی ایل" / "ایچ بی ایل بینک" → "HBL" / "Habib Bank"
              * "یو بی ایل" / "یو بی ایل بینک" → "UBL" / "United Bank"
              * "ایم سی بی" / "ایم سی بی بینک" → "MCB" / "MCB Bank"
@@ -399,21 +379,35 @@ def process_send_money_intent(data_dict, background_tasks, context_data=None):
              * "اسکری" / "اسکری بینک" → "Askari" / "Askari Bank"
              * "جے ایس بینک" → "JS Bank"
              * "اسٹینڈرڈ چارٹرڈ" → "Standard Chartered"
+           - Sindhi bank name references (same banks, different spelling):
+             * "ايڇ بي ايل" / "ايڇ بي ايل بينڪ" → "HBL" / "Habib Bank"
+             * "يو بي ايل" / "يو بي ايل بينڪ" → "UBL" / "United Bank"
+             * "ايم سي بي" / "ايم سي بي بينڪ" → "MCB" / "MCB Bank"
+             * "ميزان" / "ميزان بينڪ" → "Meezan" / "Meezan Bank"
+             * "الفلاح" / "الفلاح بينڪ" → "Alfalah" / "Bank Alfalah"
+             * "فيصل" / "فيصل بينڪ" → "Faysal" / "Faysal Bank"
+             * "اسڪري" / "اسڪري بينڪ" → "Askari" / "Askari Bank"
+             * "جي ايس بينڪ" → "JS Bank"
+             * "اسٽينڊرڊ چارٽرڊ" → "Standard Chartered"
         
-        3. TRANSLITERATE the Urdu name to English (only if name exists):
-           * "علی" → "Ali"
-           * "احمد" → "Ahmed" 
-           * "حمزہ" → "Hamza"
-           * "عمر" → "Omer" or "Umar" or "Omar"
-           * "عثمان" → "Usman" or "Usama" or "Osama"
-           * "حسن" → "Hassan" or "Hasan"
+        3. TRANSLITERATE the Urdu or Sindhi name to English (only if name exists):
+           - Urdu examples:
+             * "علی" → "Ali", "احمد" → "Ahmed", "حمزہ" → "Hamza"
+             * "عمر" → "Omer" or "Umar" or "Omar"
+             * "عثمان" → "Usman" or "Usama" or "Osama"
+             * "حسن" → "Hassan" or "Hasan"
+           - Sindhi examples (same Arabic-origin names, slight script differences):
+             * "علي" → "Ali", "احمد" → "Ahmed", "حمزه" → "Hamza"
+             * "محمد" → "Muhammad" or "Mohammad"
+             * "عمر" → "Omer" or "Umar" or "Omar"
+             * "عثمان" → "Usman", "حسن" → "Hassan" or "Hasan"
         
         4. MATCH against beneficiaries list:
            
            STEP A: Filter by name first
            - Check if transliterated name appears in beneficiary's full name
-           - "عمر" → "Omer" → matches "MUHAMMAD OMER KHAN"
-           - "علی" → "Ali" → matches "Ali Raza" or "Mubashir Ali"
+           - "عمر" / "عمر" → "Omer" → matches "MUHAMMAD OMER KHAN"
+           - "علی" / "علي" → "Ali" → matches "Ali Raza" or "Mubashir Ali"
            - Prioritize first name matches
            - Allow similarity > 85% for fuzzy matching
            
@@ -423,9 +417,9 @@ def process_send_money_intent(data_dict, background_tasks, context_data=None):
            - Match priority when bank name is mentioned:
              1. Exact bank name match (case-insensitive)
              2. Partial bank name match (e.g., "HBL" matches "Habib Bank")
-             3. Bank acronym match (e.g., "یو بی ایل" matches "United Bank" or "UBL")
+             3. Bank acronym match (e.g., "یو بی ایل" / "يو بي ايل" matches "United Bank" or "UBL")
            - If bank name matches, return that beneficiary's ID
-           - If bank name doesn't match or is not mentioned, return the first matching beneficiary's ID
+           - If bank name doesn't match or is not mentioned, return ALL matching IDs
         
         5. RETURN list of matched beneficiary IDs:
            - IF NAME MENTIONED AND SINGLE MATCH FOUND: Return id = [beneficiary_id]
@@ -604,7 +598,8 @@ def process_pay_bill_intent(data_dict, background_tasks, context_data=None):
     MATCHING INSTRUCTIONS:
     
     1. EXTRACT the bill type/provider and bill name (nickname) mentioned in the transcript
-       - For Urdu text: Transliterate to English before comparing
+       - The transcript may be in Sindhi, Urdu, or English
+       - For Urdu/Sindhi text: Transliterate to English before comparing
        - Focus on key identifiers: provider names, company names, or bill nicknames
     
     2. SEARCH through bills_type_list to find the best matching bill
@@ -735,8 +730,9 @@ def process_mobile_topup_intent(data_dict, background_tasks, context_data=None):
     
     STEP 1: EXTRACT the PERSON'S NAME from the transcript
        - Extract the name mentioned in the transcript (ignore SIM provider mentions for now)
-       - For Urdu names: Transliterate to English before comparing
-         * "علی" → "Ali", "احمد" → "Ahmed", "حمزہ" → "Hamza", "رفیع" → "Rafay"
+       - The transcript may be in Sindhi, Urdu, or English
+       - For Urdu/Sindhi names: Transliterate to English before comparing
+         * "علی" / "علي" → "Ali", "احمد" → "Ahmed", "حمزہ" / "حمزه" → "Hamza", "رفیع" → "Rafay"
        - For English names: Use as-is (case-insensitive)
        - CRITICAL: If NO name is mentioned in the transcript, proceed to STEP 3
     
@@ -761,6 +757,7 @@ def process_mobile_topup_intent(data_dict, background_tasks, context_data=None):
          - Extract SIM provider mentioned in transcript (if any)
            * Common providers: "Telenor", "TELENOR", "Ufone", "UFONE", "Zong", "ZONG", "Jazz", "JAZZ"
            * Urdu: "ٹیلی نار" → "Telenor", "زونگ" → "Zong", "یوفون" → "Ufone", "جاز" → "Jazz"
+           * Sindhi: "ٽيلينار" → "Telenor", "زونگ" → "Zong", "يوفون" → "Ufone", "جاز" → "Jazz"
          - Match the SIM provider against the provider part in the matched contacts
          - If provider matches exactly ONE contact, return that contact's ID as a single-element list
          - If provider doesn't match or is not mentioned, return ALL matching contact IDs as a list so user can pick
@@ -894,7 +891,8 @@ def process_download_statement_intent(data_dict, background_tasks, context_data=
     
     - If BOTH mentioned: Populate both statement_period_month and statement_period_year
     
-    KEYWORDS: "monthly", "yearly", "last month", "previous year", "mahana", "سالانہ"
+    KEYWORDS: "monthly", "yearly", "last month", "previous year", "mahana", "سالانہ",
+    "مهيني" (Sindhi: monthly), "سالانه" (Sindhi: yearly), "گذريل مهينو" (Sindhi: last month)
     
     DEFAULT BEHAVIOR:
     - If no specific period mentioned: use current month and year
@@ -976,6 +974,8 @@ def process_add_new_payee_intent(data_dict, background_tasks, context_data=None)
     list_of_all_pakistani_banks = ["HBL", "UBL", "MCB", "Meezan", "Alfalah", "Faysal", "Askari", "JS Bank", "Standard Chartered", "Habib Bank", "United Bank", "MCB Bank", "Meezan Bank", "Alfalah Bank", "Faysal Bank", "Askari Bank", "JS Bank Bank", "Standard Chartered Bank", "Habib Bank Bank", "United Bank Bank"]
     list_of_all_pakistani_banks_urdu = ["ایچ بی ایل", "یو بی ایل", "ایم سی بی", "میضان", "الفا", "فیصل", "اسکری", "جے ایس بینک", "اسٹینڈرڈ چارٹرڈ", "یو بی ایل بینک", "ایچ بی ایل بینک", "ایم سی بی بینک", "میضان بینک", "الفا بینک", "فیصل بینک", "اسکری بینک", "جے ایس بینک بینک", "اسٹینڈرڈ چارٹرڈ بینک"]
     
+    list_of_all_pakistani_banks_sindhi = ["ايڇ بي ايل", "يو بي ايل", "ايم سي بي", "ميزان", "الفلاح", "فيصل", "اسڪري", "جي ايس بينڪ", "اسٽينڊرڊ چارٽرڊ"]
+
     prompt = f"""You are processing a ADD NEW PAYEE command. Extract payee details from the transcript.
     
     Transcript: "{data_dict['transcribed_text']}"
@@ -984,11 +984,12 @@ def process_add_new_payee_intent(data_dict, background_tasks, context_data=None)
     YOUR TASK: Extract payee details from the transcript.
 
     User can mention the name of the payee, the bank name, and the account number in the transcript.
-    Details can be mentioned in urdu or english, but we need to return them in english.
+    Details can be mentioned in Sindhi, Urdu, or English, but we need to return them in English.
 
-    Mentioned bank name most often belongs to list_of_all_pakistani_banks or list_of_all_pakistani_banks_urdu.
-    {json.dumps(list_of_all_pakistani_banks)}
-    {json.dumps(list_of_all_pakistani_banks_urdu)}
+    Mentioned bank name most often belongs to one of these lists:
+    English banks: {json.dumps(list_of_all_pakistani_banks)}
+    Urdu banks: {json.dumps(list_of_all_pakistani_banks_urdu)}
+    Sindhi banks: {json.dumps(list_of_all_pakistani_banks_sindhi)}
 
     If the user doesn't mention the details, return empty strings for the details.
     RETURN STRUCTURED DATA FOR ADD NEW PAYEE OPERATION.
@@ -1056,6 +1057,7 @@ def process_deals_and_discounts_intent(data_dict, background_tasks, context_data
     YOUR TASK: Extract card discount details from the transcript.
     
     User can mention whether he wants discounts related to his/her Card in the transcript.
+    The transcript may be in Sindhi, Urdu, or English.
     Return structured data for deals and discounts operation."""
 
     try:

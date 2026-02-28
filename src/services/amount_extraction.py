@@ -208,7 +208,9 @@ Your task:
 1. Analyze if the rule-based extracted amount ({extracted_amount}) is reasonable given the transcript and context
 2. If the extracted amount seems correct, confirm it
 3. If the extracted amount seems wrong or is None, extract the correct amount from the transcript
-4. Handle Urdu/Roman Urdu numeric expressions (e.g., "پانچ ہزار", "paanch hazaar", "five thousand" all mean 5000)
+4. Handle Sindhi, Urdu, Roman Urdu, and English numeric expressions
+   - Sindhi examples: "هڪ هزار" (1000), "پنج سؤ" (500), "ٻه لک" (200000)
+   - Urdu examples: "پانچ ہزار" (5000), "paanch hazaar" (5000), "five thousand" (5000)
 
 Critical rules:
 - If transcript clearly states an amount and extracted amount matches, confirm it
@@ -236,7 +238,7 @@ Examples:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert amount extraction validator for Pakistani banking systems. You understand Urdu, Roman Urdu, and English numeric expressions. Always respond with valid JSON only."
+                    "content": "You are an expert amount extraction validator for Pakistani banking systems. You understand Sindhi, Urdu, Roman Urdu, and English numeric expressions. Sindhi number words include: هڪ (1), ٻه (2), ٽي (3), چار (4), پنج (5), ڇهه (6), ست (7), اٺ (8), نو (9), ڏهه (10), ويهه (20), ٽيهه (30), چاليهه (40), پنجاهه (50), سٺ (60), ستر (70), اسي (80), نوي (90), سؤ (100), هزار (1000), لک (100000), ڪروڙ (10000000). Always respond with valid JSON only."
                 },
                 {
                     "role": "user",

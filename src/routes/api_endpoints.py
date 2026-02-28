@@ -26,7 +26,7 @@ from src.services.amount_extraction import extract_amount_from_transcript
 import os
 from src.utils.helper_functions import sync_insert_transcription, sync_update_is_correct
 from src.services.intent_classification import prediction_pipeline
-from src.services.transliteration import get_prediction,check_if_urdu
+from src.services.transliteration import get_prediction, check_if_urdu, check_if_sindhi
 from src.utils.switch_pipeline import low_cost_priority
 from src.services.s3_storage import upload_audio_file
 from src.utils.logger import log, set_request_id, get_request_id
@@ -221,7 +221,10 @@ async def validate_command(request: Request,
         log("Time taken to transcribe audio: ", timer_2 - timer_1, "seconds")
         #labal =0 if transliteration ,1 if in urdu
         try:
-            if check_if_urdu(transcribed_text):     
+            if check_if_sindhi(transcribed_text):
+                detected_language = "urdu"
+                log('Transcribed text is in Sindhi (treating as Urdu for processing).')
+            elif check_if_urdu(transcribed_text):
                 label= get_prediction(transliterations_model, trans_vectorizer, transcribed_text)
                 detected_label= 'transliterations' if label == 0 else 'ur'
                 log(f"Detected Label for Transliterations: {detected_label}")
@@ -229,7 +232,7 @@ async def validate_command(request: Request,
                     log('Transcribed text is in english transliteration in urdu.')
                     detected_language="english"
                 else:
-                    log('Transcribed text is in urdu.')     
+                    log('Transcribed text is in urdu.')
                     detected_language="urdu"
         except Exception as e:
             log(e)
