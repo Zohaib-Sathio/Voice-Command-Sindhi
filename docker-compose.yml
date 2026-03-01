@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: fastapi-fortvoice
     ports:
-      - "8000:8000"
+      - "6096:6096"
     environment:
       # Database Configuration
       - DB_HOST=${DB_HOST:-localhost}
