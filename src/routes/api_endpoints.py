@@ -402,6 +402,141 @@ async def validate_command(request: Request,
             detail=f"Command processing failed: {str(processing_error)}"
         )
     
+class TextCommandRequest(BaseModel):
+    text: str
+    beneficiary_list: list = []
+    phone_number_list: list = []
+    bills_type_list: list = []
+
+
+@router.post("/v1/api/command/text")
+@limiter.limit("6/minute")
+async def validate_text_command(request: Request, background_tasks: BackgroundTasks, body: TextCommandRequest):
+    file_id = str(uuid4())
+    set_request_id(file_id)
+    file_name = f"{file_id}.txt"
+
+    transcribed_text = body.text.strip()
+    if not transcribed_text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    log(f"Text command received: {transcribed_text}")
+
+    beneficiaries = body.beneficiary_list
+    phone_contacts = body.phone_number_list
+    bill_types = body.bills_type_list
+
+    for beneficiary in beneficiaries:
+        if "bankName" in beneficiary:
+            beneficiary["bank_name"] = beneficiary.pop("bankName")
+
+    detected_language = "english"
+
+    try:
+        if check_if_sindhi(transcribed_text):
+            detected_language = "urdu"
+            log("Text is in Sindhi (treating as Urdu for processing).")
+        elif check_if_urdu(transcribed_text):
+            label = get_prediction(transliterations_model, trans_vectorizer, transcribed_text)
+            detected_label = "transliterations" if label == 0 else "ur"
+            log(f"Detected Label for Transliterations: {detected_label}")
+            if label == 0:
+                detected_language = "english"
+            else:
+                detected_language = "urdu"
+    except Exception as e:
+        log(e)
+
+    log(f"Original text: {transcribed_text}")
+    extraction_result = extract_amount_from_transcript(transcribed_text, detected_language)
+
+    extracted_amount = extraction_result["amount"]
+    preprocessed_text = extraction_result["preprocessed_text"]
+    amount_source = extraction_result["source"]
+
+    if extracted_amount is not None:
+        log(f"Extracted amount: {extracted_amount} (source: {amount_source})")
+        log(f"  Preprocessed text: {preprocessed_text}")
+    else:
+        log("No amount found in text")
+
+    try:
+        log("Processing command validation with GPT...")
+        log("Detected language: ", detected_language)
+
+        data_dict = {
+            "model": model,
+            "label_encoder": label_encoder,
+            "other_actions_model": other_actions_model,
+            "file_name": file_name,
+            "detected_language": detected_language,
+            "transcribed_text": transcribed_text,
+            "extracted_amount": extracted_amount,
+            "preprocessed_text": preprocessed_text,
+        }
+
+        context_data = {
+            "beneficiaries": beneficiaries,
+            "phone_contacts": phone_contacts,
+            "bill_types": bill_types,
+        }
+        log("Initial Extracted Amount: ", extracted_amount)
+
+        timer_start = time.perf_counter()
+        response = await low_cost_priority(prediction_pipeline, data_dict, background_tasks, context_data)
+        timer_end = time.perf_counter()
+        log("Time taken to get GPT response: ", timer_end - timer_start, "seconds")
+
+        try:
+            command_data = json.loads(response)
+        except json.JSONDecodeError:
+            import re
+            json_match = re.search(r"\{.*\}", response, re.DOTALL)
+            if json_match:
+                command_data = json.loads(json_match.group())
+            else:
+                raise HTTPException(status_code=500, detail="GPT returned invalid JSON format")
+
+        command_data["detected_language"] = detected_language
+        command_data["file_id"] = file_name
+
+        if not command_data.get("type") or command_data["type"].strip() == "":
+            command_data["type"] = "unknown"
+            log("Empty type detected, setting to 'unknown'")
+
+        if command_data["type"] == "download_statement":
+            if command_data["statement_period_month"] == "" and command_data["statement_period_year"] == "":
+                command_data["statement_period_month"] = str(datetime.now().strftime("%B"))
+                command_data["statement_period_year"] = str(datetime.now().year)
+
+        if command_data.get("amount") is not None and command_data["amount"] < 0:
+            command_data["amount"] = 0
+            log("Amount is less than 0, setting to 0")
+        if command_data.get("amount") is None:
+            command_data["amount"] = 0
+            log("Amount is None, setting to 0")
+
+        try:
+            data_to_insert = {
+                "file_id": file_name,
+                "transcription_text": transcribed_text,
+                "language": detected_language,
+                "gpt_response": json.dumps(command_data),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            background_tasks.add_task(sync_insert_transcription, data_to_insert)
+        except Exception as db_error:
+            log(f"Failed to save metadata to database: {db_error}")
+
+        log("Final Response: ", command_data)
+        return CommandValidationResponse(**command_data)
+
+    except HTTPException:
+        raise
+    except Exception as processing_error:
+        raise HTTPException(status_code=500, detail=f"Command processing failed: {str(processing_error)}")
+
+
 @router.put("/update_record")
 @limiter.limit("10/minute")
 async def update_record(request: Request, file_id: str):
