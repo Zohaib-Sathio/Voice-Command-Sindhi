@@ -169,7 +169,7 @@ async def root(request: Request):
 
 
 @router.post("/v1/api/transcribe/command")
-@limiter.limit("6/minute")
+# @limiter.limit("6/minute")
 async def validate_command(request: Request,
         background_tasks: BackgroundTasks,
         audio_file: UploadFile = File(...),
@@ -410,7 +410,7 @@ class TextCommandRequest(BaseModel):
 
 
 @router.post("/v1/api/command/text")
-@limiter.limit("6/minute")
+# @limiter.limit("6/minute")
 async def validate_text_command(request: Request, background_tasks: BackgroundTasks, body: TextCommandRequest):
     file_id = str(uuid4())
     set_request_id(file_id)
